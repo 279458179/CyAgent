@@ -1,6 +1,6 @@
 import subprocess
 from typing import Dict, Optional
-from .system_detector import SystemDetector
+from src.system_detector import SystemDetector
 
 class SystemInitializer:
     def __init__(self):

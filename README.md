@@ -1,4 +1,4 @@
-# 系统初始化智能体 (System Initializer Agent)
+# CyAgent - 系统初始化智能体
 
 这是一个用于自动化系统初始化的智能体项目，支持多种Linux发行版的系统初始化配置。
 
@@ -24,8 +24,8 @@
 ## 安装
 
 ```bash
-git clone https://github.com/yourusername/system_initializer.git
-cd system_initializer
+git clone https://github.com/yourusername/CyAgent.git
+cd CyAgent
 pip install -r requirements.txt
 ```
 
@@ -38,7 +38,7 @@ python src/main.py
 ## 项目结构
 
 ```
-system_initializer/
+CyAgent/
 ├── src/                # 源代码目录
 ├── tests/              # 测试代码目录
 ├── docs/               # 文档目录

@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 import argparse
+import os
+import sys
+
+# 添加src目录到Python路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from rich.console import Console
 from rich.prompt import Prompt
-from .system_detector import SystemDetector
-from .system_initializer import SystemInitializer
+from src.system_detector import SystemDetector
+from src.system_initializer import SystemInitializer
 
 console = Console()
 
