@@ -1,0 +1,6 @@
+requests>=2.31.0
+beautifulsoup4>=4.12.2
+fake-useragent>=1.4.0
+python-docx>=1.0.1
+tqdm>=4.66.1
+rich>=13.7.0 
