@@ -9,45 +9,45 @@ from crawler import WebCrawler
 def main():
     console = Console()
     
-    # ½âÎöÃüÁîĞĞ²ÎÊı
-    parser = argparse.ArgumentParser(description='ÍøÒ³ÄÚÈİ×¥È¡¹¤¾ß')
-    parser.add_argument('--url', help='Òª×¥È¡µÄURL')
-    parser.add_argument('--format', choices=['txt', 'docx'], default='txt', help='±£´æ¸ñÊ½')
-    parser.add_argument('--output', default='downloaded_content', help='Êä³öÄ¿Â¼')
+    # è§£æå‘½ä»¤è¡Œå‚æ•°
+    parser = argparse.ArgumentParser(description='ç½‘é¡µå†…å®¹æŠ“å–å·¥å…·')
+    parser.add_argument('--url', help='è¦æŠ“å–çš„URL')
+    parser.add_argument('--format', choices=['txt', 'docx'], default='txt', help='ä¿å­˜æ ¼å¼')
+    parser.add_argument('--output', default='downloaded_content', help='è¾“å‡ºç›®å½•')
     args = parser.parse_args()
     
-    # ³õÊ¼»¯ÅÀ³æ
+    # åˆå§‹åŒ–çˆ¬è™«
     crawler = WebCrawler(save_dir=args.output)
     
     if args.url:
-        # µ¥¸öURLÄ£Ê½
+        # å•ä¸ªURLæ¨¡å¼
         crawler.crawl_page(args.url, args.format)
     else:
-        # ½»»¥Ä£Ê½
-        console.print("[yellow]»¶Ó­Ê¹ÓÃÍøÒ³ÄÚÈİ×¥È¡¹¤¾ß[/yellow]")
+        # äº¤äº’æ¨¡å¼
+        console.print("[yellow]æ¬¢è¿ä½¿ç”¨ç½‘é¡µå†…å®¹æŠ“å–å·¥å…·[/yellow]")
         
         while True:
-            url = Prompt.ask("\nÇëÊäÈëÒª×¥È¡µÄURL£¨ÊäÈëqÍË³ö£©")
+            url = Prompt.ask("\nè¯·è¾“å…¥è¦æŠ“å–çš„URLï¼ˆè¾“å…¥qé€€å‡ºï¼‰")
             if url.lower() == 'q':
                 break
                 
             format_choice = Prompt.ask(
-                "Ñ¡Ôñ±£´æ¸ñÊ½",
+                "é€‰æ‹©ä¿å­˜æ ¼å¼",
                 choices=['txt', 'docx'],
                 default='txt'
             )
             
             crawler.crawl_page(url, format_choice)
             
-            # Ñ¯ÎÊÊÇ·ñÌáÈ¡Á´½Ó
-            if Prompt.ask("ÊÇ·ñÌáÈ¡Ò³ÃæÖĞµÄÁ´½Ó£¿", choices=['y', 'n']) == 'y':
+            # è¯¢é—®æ˜¯å¦æå–é“¾æ¥
+            if Prompt.ask("æ˜¯å¦æå–é¡µé¢ä¸­çš„é“¾æ¥ï¼Ÿ", choices=['y', 'n']) == 'y':
                 links = crawler.extract_links(url)
                 if links:
-                    console.print(f"\n[green]ÕÒµ½ {len(links)} ¸öÁ´½Ó£º[/green]")
+                    console.print(f"\n[green]æ‰¾åˆ° {len(links)} ä¸ªé“¾æ¥ï¼š[/green]")
                     for i, link in enumerate(links, 1):
                         console.print(f"{i}. {link}")
                         
-                    if Prompt.ask("ÊÇ·ñ×¥È¡ÕâĞ©Á´½Ó£¿", choices=['y', 'n']) == 'y':
+                    if Prompt.ask("æ˜¯å¦æŠ“å–è¿™äº›é“¾æ¥ï¼Ÿ", choices=['y', 'n']) == 'y':
                         crawler.crawl_pages(links, format_choice)
 
 if __name__ == "__main__":

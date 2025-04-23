@@ -16,20 +16,20 @@ from urllib.parse import urljoin, urlparse
 class WebCrawler:
     def __init__(self, save_dir: str = "downloaded_content"):
         """
-        ³õÊ¼»¯ÅÀ³æ
+        åˆå§‹åŒ–çˆ¬è™«
         
         Args:
-            save_dir (str): ±£´æÎÄ¼şµÄÄ¿Â¼
+            save_dir (str): ä¿å­˜æ–‡ä»¶çš„ç›®å½•
         """
         self.ua = UserAgent()
         self.save_dir = save_dir
         self.console = Console()
         
-        # ´´½¨±£´æÄ¿Â¼
+        # åˆ›å»ºä¿å­˜ç›®å½•
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
             
-        # ÉèÖÃÇëÇóÍ·
+        # è®¾ç½®è¯·æ±‚å¤´
         self.headers = {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'zh-CN,zh;q=0.8,en;q=0.6',
@@ -38,15 +38,15 @@ class WebCrawler:
             'Upgrade-Insecure-Requests': '1',
         }
         
-        # ÉèÖÃÇëÇóÑÓ³Ù·¶Î§£¨Ãë£©
+        # è®¾ç½®è¯·æ±‚å»¶è¿ŸèŒƒå›´ï¼ˆç§’ï¼‰
         self.delay_range = (1, 3)
         
     def _get_random_headers(self) -> Dict[str, str]:
         """
-        Éú³ÉËæ»úÇëÇóÍ·
+        ç”Ÿæˆéšæœºè¯·æ±‚å¤´
         
         Returns:
-            Dict[str, str]: ÇëÇóÍ·×Öµä
+            Dict[str, str]: è¯·æ±‚å¤´å­—å…¸
         """
         headers = self.headers.copy()
         headers['User-Agent'] = self.ua.random
@@ -54,20 +54,20 @@ class WebCrawler:
         
     def _add_delay(self):
         """
-        Ìí¼ÓËæ»úÑÓ³Ù
+        æ·»åŠ éšæœºå»¶è¿Ÿ
         """
         delay = random.uniform(*self.delay_range)
         time.sleep(delay)
         
     def _is_valid_url(self, url: str) -> bool:
         """
-        ¼ì²éURLÊÇ·ñÓĞĞ§
+        æ£€æŸ¥URLæ˜¯å¦æœ‰æ•ˆ
         
         Args:
-            url (str): Òª¼ì²éµÄURL
+            url (str): è¦æ£€æŸ¥çš„URL
             
         Returns:
-            bool: URLÊÇ·ñÓĞĞ§
+            bool: URLæ˜¯å¦æœ‰æ•ˆ
         """
         try:
             result = urlparse(url)
@@ -77,13 +77,13 @@ class WebCrawler:
             
     def _get_filename_from_url(self, url: str) -> str:
         """
-        ´ÓURLÉú³ÉÎÄ¼şÃû
+        ä»URLç”Ÿæˆæ–‡ä»¶å
         
         Args:
-            url (str): ÍøÒ³URL
+            url (str): ç½‘é¡µURL
             
         Returns:
-            str: ÎÄ¼şÃû
+            str: æ–‡ä»¶å
         """
         parsed = urlparse(url)
         path = parsed.path.strip('/')
@@ -93,11 +93,11 @@ class WebCrawler:
         
     def _save_as_txt(self, content: str, filename: str):
         """
-        ±£´æÎªTXTÎÄ¼ş
+        ä¿å­˜ä¸ºTXTæ–‡ä»¶
         
         Args:
-            content (str): Òª±£´æµÄÄÚÈİ
-            filename (str): ÎÄ¼şÃû
+            content (str): è¦ä¿å­˜çš„å†…å®¹
+            filename (str): æ–‡ä»¶å
         """
         filepath = os.path.join(self.save_dir, f"{filename}.txt")
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -105,82 +105,130 @@ class WebCrawler:
             
     def _save_as_docx(self, content: str, filename: str):
         """
-        ±£´æÎªDOCXÎÄ¼ş
+        ä¿å­˜ä¸ºDOCXæ–‡ä»¶
         
         Args:
-            content (str): Òª±£´æµÄÄÚÈİ
-            filename (str): ÎÄ¼şÃû
+            content (str): è¦ä¿å­˜çš„å†…å®¹
+            filename (str): æ–‡ä»¶å
         """
         filepath = os.path.join(self.save_dir, f"{filename}.docx")
         doc = Document()
         doc.add_paragraph(content)
         doc.save(filepath)
         
-    def crawl_page(self, url: str, save_format: str = 'txt') -> bool:
+    def _extract_content(self, soup: BeautifulSoup) -> str:
         """
-        ÅÀÈ¡µ¥¸öÒ³Ãæ
+        æå–é¡µé¢ä¸»è¦å†…å®¹
         
         Args:
-            url (str): ÒªÅÀÈ¡µÄURL
-            save_format (str): ±£´æ¸ñÊ½£¬'txt'»ò'docx'
+            soup (BeautifulSoup): BeautifulSoupå¯¹è±¡
             
         Returns:
-            bool: ÊÇ·ñ³É¹¦
+            str: æå–çš„æ–‡æœ¬å†…å®¹
+        """
+        # ç§»é™¤ä¸éœ€è¦çš„å…ƒç´ 
+        for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+            element.decompose()
+            
+        # å°è¯•æ‰¾åˆ°ä¸»è¦å†…å®¹åŒºåŸŸ
+        main_content = None
+        
+        # å¸¸è§çš„æ–‡ç« å†…å®¹å®¹å™¨
+        content_selectors = [
+            'article',
+            '.article-content',
+            '.article-body',
+            '.content',
+            '.main-content',
+            '#content',
+            '.post-content',
+            '.entry-content'
+        ]
+        
+        for selector in content_selectors:
+            main_content = soup.select_one(selector)
+            if main_content:
+                break
+                
+        if not main_content:
+            main_content = soup
+            
+        # è·å–æ–‡æœ¬
+        text = main_content.get_text(separator='\n', strip=True)
+        
+        # æ¸…ç†æ–‡æœ¬
+        lines = []
+        for line in text.split('\n'):
+            line = line.strip()
+            if line and len(line) > 1:  # è¿‡æ»¤ç©ºè¡Œå’Œå•å­—ç¬¦è¡Œ
+                lines.append(line)
+                
+        return '\n'.join(lines)
+        
+    def crawl_page(self, url: str, save_format: str = 'txt') -> bool:
+        """
+        çˆ¬å–å•ä¸ªé¡µé¢
+        
+        Args:
+            url (str): è¦çˆ¬å–çš„URL
+            save_format (str): ä¿å­˜æ ¼å¼ï¼Œ'txt'æˆ–'docx'
+            
+        Returns:
+            bool: æ˜¯å¦æˆåŠŸ
         """
         if not self._is_valid_url(url):
-            self.console.print(f"[red]ÎŞĞ§µÄURL: {url}[/red]")
+            self.console.print(f"[red]æ— æ•ˆçš„URL: {url}[/red]")
             return False
             
         try:
-            # Ìí¼ÓËæ»úÑÓ³Ù
+            # æ·»åŠ éšæœºå»¶è¿Ÿ
             self._add_delay()
             
-            # ·¢ËÍÇëÇó
-            response = requests.get(url, headers=self._get_random_headers(), timeout=10)
+            # å‘é€è¯·æ±‚
+            response = requests.get(
+                url,
+                headers=self._get_random_headers(),
+                timeout=10,
+                verify=False  # å¿½ç•¥SSLè¯ä¹¦éªŒè¯
+            )
             response.raise_for_status()
             
-            # ½âÎöHTML
+            # è®¾ç½®æ­£ç¡®çš„ç¼–ç 
+            if response.encoding == 'ISO-8859-1':
+                response.encoding = response.apparent_encoding
+                
+            # è§£æHTML
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # ÌáÈ¡ÕıÎÄÄÚÈİ
-            # ÒÆ³ı½Å±¾ºÍÑùÊ½
-            for script in soup(["script", "style"]):
-                script.decompose()
-                
-            # »ñÈ¡ÎÄ±¾
-            text = soup.get_text()
+            # æå–å†…å®¹
+            text = self._extract_content(soup)
             
-            # ÇåÀíÎÄ±¾
-            lines = (line.strip() for line in text.splitlines())
-            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-            text = '\n'.join(chunk for chunk in chunks if chunk)
-            
-            # Éú³ÉÎÄ¼şÃû
+            # ç”Ÿæˆæ–‡ä»¶å
             filename = self._get_filename_from_url(url)
             
-            # ±£´æÎÄ¼ş
+            # ä¿å­˜æ–‡ä»¶
             if save_format.lower() == 'docx':
                 self._save_as_docx(text, filename)
             else:
                 self._save_as_txt(text, filename)
                 
-            self.console.print(f"[green]³É¹¦±£´æ: {filename}.{save_format}[/green]")
+            self.console.print(f"[green]æˆåŠŸä¿å­˜: {filename}.{save_format}[/green]")
             return True
             
         except Exception as e:
-            self.console.print(f"[red]ÅÀÈ¡Ê§°Ü: {str(e)}[/red]")
+            self.console.print(f"[red]çˆ¬å–å¤±è´¥: {str(e)}[/red]")
             return False
             
     def crawl_pages(self, urls: List[str], save_format: str = 'txt'):
         """
-        ÅúÁ¿ÅÀÈ¡Ò³Ãæ
+        æ‰¹é‡çˆ¬å–é¡µé¢
         
         Args:
-            urls (List[str]): URLÁĞ±í
-            save_format (str): ±£´æ¸ñÊ½£¬'txt'»ò'docx'
+            urls (List[str]): URLåˆ—è¡¨
+            save_format (str): ä¿å­˜æ ¼å¼ï¼Œ'txt'æˆ–'docx'
         """
         with Progress() as progress:
-            task = progress.add_task("[cyan]ÅÀÈ¡½ø¶È...", total=len(urls))
+            task = progress.add_task("[cyan]çˆ¬å–è¿›åº¦...", total=len(urls))
             
             for url in urls:
                 self.crawl_page(url, save_format)
@@ -188,25 +236,36 @@ class WebCrawler:
                 
     def extract_links(self, url: str) -> List[str]:
         """
-        ÌáÈ¡Ò³ÃæÖĞµÄËùÓĞÁ´½Ó
+        æå–é¡µé¢ä¸­çš„æ‰€æœ‰é“¾æ¥
         
         Args:
-            url (str): ÒªÌáÈ¡Á´½ÓµÄURL
+            url (str): è¦æå–é“¾æ¥çš„URL
             
         Returns:
-            List[str]: Á´½ÓÁĞ±í
+            List[str]: é“¾æ¥åˆ—è¡¨
         """
         try:
-            response = requests.get(url, headers=self._get_random_headers(), timeout=10)
+            # å‘é€è¯·æ±‚
+            response = requests.get(
+                url,
+                headers=self._get_random_headers(),
+                timeout=10,
+                verify=False  # å¿½ç•¥SSLè¯ä¹¦éªŒè¯
+            )
             response.raise_for_status()
             
+            # è®¾ç½®æ­£ç¡®çš„ç¼–ç 
+            if response.encoding == 'ISO-8859-1':
+                response.encoding = response.apparent_encoding
+                
+            # è§£æHTML
             soup = BeautifulSoup(response.text, 'html.parser')
             links = []
             
             for link in soup.find_all('a'):
                 href = link.get('href')
                 if href:
-                    # ×ª»»Îª¾ø¶ÔURL
+                    # è½¬æ¢ä¸ºç»å¯¹URL
                     absolute_url = urljoin(url, href)
                     if self._is_valid_url(absolute_url):
                         links.append(absolute_url)
@@ -214,5 +273,5 @@ class WebCrawler:
             return links
             
         except Exception as e:
-            self.console.print(f"[red]ÌáÈ¡Á´½ÓÊ§°Ü: {str(e)}[/red]")
+            self.console.print(f"[red]æå–é“¾æ¥å¤±è´¥: {str(e)}[/red]")
             return [] 
