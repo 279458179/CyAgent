@@ -1,8 +1,8 @@
 import os
 import sys
-import yt_dlp
-from pathlib import Path
 import time
+from pathlib import Path
+import yt_dlp
 
 def download_music(song_name):
     # 设置下载目录
