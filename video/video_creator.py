@@ -4,9 +4,10 @@ import time
 from pathlib import Path
 import requests
 import yt_dlp
-from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips
+from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips, vfx
 from dotenv import load_dotenv
 import random
+import json
 
 # 加载环境变量
 load_dotenv()
@@ -31,9 +32,23 @@ class VideoCreator:
             'Authorization': self.pexels_api_key
         }
     
-    def download_pexels_video(self, query, per_page=10):
+    def get_highest_quality_video(self, video_files):
+        """获取最高质量的视频文件"""
+        highest_quality = None
+        max_height = 0
+        
+        for file in video_files:
+            # 只选择4K及以上分辨率的视频
+            if file['height'] >= 2160 and file['width'] >= 3840:
+                if file['height'] > max_height:
+                    max_height = file['height']
+                    highest_quality = file
+        
+        return highest_quality
+    
+    def download_pexels_video(self, query, per_page=20):
         """从Pexels下载视频"""
-        url = f"https://api.pexels.com/videos/search?query={query}&per_page={per_page}"
+        url = f"https://api.pexels.com/videos/search?query={query}&per_page={per_page}&orientation=landscape"
         response = requests.get(url, headers=self.headers)
         
         if response.status_code != 200:
@@ -43,11 +58,17 @@ class VideoCreator:
         downloaded_files = []
         
         for video in videos:
-            video_url = video['video_files'][0]['link']  # 获取最高质量的视频
+            # 获取最高质量的视频文件
+            video_file = self.get_highest_quality_video(video['video_files'])
+            if not video_file:
+                print(f"跳过视频 {video['id']}: 分辨率不足4K")
+                continue
+                
+            video_url = video_file['link']
             video_id = video['id']
             output_path = self.downloads_dir / f"{video_id}.mp4"
             
-            print(f"正在下载视频: {video_id}")
+            print(f"正在下载视频: {video_id} (分辨率: {video_file['width']}x{video_file['height']})")
             response = requests.get(video_url, stream=True)
             with open(output_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
@@ -66,7 +87,7 @@ class VideoCreator:
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
-                'preferredquality': '192',
+                'preferredquality': '320',  # 提高音频质量
             }],
             'outtmpl': str(self.temp_dir / 'background_music.%(ext)s'),
         }
@@ -78,13 +99,30 @@ class VideoCreator:
         
         return self.temp_dir / "background_music.mp3"
     
+    def enhance_video_quality(self, clip):
+        """增强视频质量"""
+        # 提高对比度和亮度
+        clip = clip.fx(vfx.colorx, 1.2)  # 增加色彩饱和度
+        clip = clip.fx(vfx.lum_contrast, lum=1.1, contrast=1.1)  # 提高亮度和对比度
+        return clip
+    
     def create_final_video(self, video_files, music_file, target_duration=1800):
         """合成最终视频"""
         # 加载视频片段
         video_clips = []
         for video_file in video_files:
             clip = VideoFileClip(str(video_file))
+            # 检查视频质量
+            if clip.size[0] < 3840 or clip.size[1] < 2160:
+                print(f"警告: 视频 {video_file} 分辨率低于4K，将被跳过")
+                continue
+            if clip.fps < 30:
+                print(f"警告: 视频 {video_file} 帧率过低，将被跳过")
+                continue
             video_clips.append(clip)
+        
+        if not video_clips:
+            raise Exception("没有找到足够高质量的视频片段")
         
         # 计算每个片段的时长
         total_clips = len(video_clips)
@@ -99,6 +137,8 @@ class VideoCreator:
                 adjusted_clip = clip.subclip(start_time, start_time + clip_duration)
             else:
                 adjusted_clip = clip
+            # 增强视频质量
+            adjusted_clip = self.enhance_video_quality(adjusted_clip)
             adjusted_clips.append(adjusted_clip)
         
         # 连接视频片段
@@ -126,10 +166,28 @@ class VideoCreator:
             audio_codec='aac',
             temp_audiofile=str(self.temp_dir / "temp-audio.m4a"),
             remove_temp=True,
-            fps=30,
-            preset='slow',  # 使用较慢的编码预设以获得更好的质量
-            threads=4,
-            bitrate='8000k'  # 8K视频的比特率
+            fps=60,  # 提高帧率
+            preset='veryslow',  # 最慢但质量最好的编码预设
+            bitrate='50000k',  # 更高的比特率
+            threads=8,  # 增加线程数
+            ffmpeg_params=[
+                '-refs', '6',
+                '-me_method', 'umh',
+                '-subq', '8',
+                '-trellis', '2',
+                '-fast-pskip', '0',
+                '-8x8dct', '1',
+                '-weightb', '1',
+                '-keyint', '250',
+                '-min-keyint', '25',
+                '-scenecut', '40',
+                '-rc-lookahead', '60',
+                '-aq-mode', '3',
+                '-aq-strength', '0.8',
+                '-psy-rd', '1.0,0.0',
+                '-profile:v', 'high',
+                '-level', '5.2'
+            ]
         )
         
         # 清理临时文件
