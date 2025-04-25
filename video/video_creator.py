@@ -178,9 +178,8 @@ class VideoCreator:
                 '-fast-pskip', '0',
                 '-8x8dct', '1',
                 '-weightb', '1',
-                '-keyint', '250',
-                '-min-keyint', '25',
-                '-scenecut', '40',
+                '-g', '250',  # 关键帧间隔
+                '-sc_threshold', '40',  # 场景切换阈值
                 '-rc-lookahead', '60',
                 '-aq-mode', '3',
                 '-aq-strength', '0.8',
