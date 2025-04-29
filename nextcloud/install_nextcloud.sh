@@ -14,11 +14,25 @@ fi
 
 # 获取域名
 get_domain() {
+    # 检查是否已有域名配置
+    if [ -f "nextcloud/config/domain.txt" ]; then
+        domain=$(cat nextcloud/config/domain.txt)
+        echo -e "${GREEN}检测到已配置的域名: $domain${NC}"
+        read -p "是否使用现有域名? (y/n): " use_existing
+        if [[ "$use_existing" == "y" || "$use_existing" == "Y" ]]; then
+            echo "$domain"
+            return
+        fi
+    fi
+    
     read -p "请输入您的域名 (例如: cloud.example.com): " domain
     if [[ -z "$domain" ]]; then
         echo -e "${RED}域名不能为空${NC}"
         exit 1
     fi
+    # 保存域名配置
+    mkdir -p nextcloud/config
+    echo "$domain" > nextcloud/config/domain.txt
     echo "$domain"
 }
 
@@ -52,6 +66,35 @@ check_docker_compose() {
         echo -e "${YELLOW}Docker Compose 未安装${NC}"
         return 1
     fi
+}
+
+# 备份现有数据
+backup_existing_data() {
+    if [ -d "nextcloud" ]; then
+        echo -e "${YELLOW}备份现有数据...${NC}"
+        backup_dir="nextcloud_backup_$(date +%Y%m%d_%H%M%S)"
+        mkdir -p "$backup_dir"
+        
+        # 备份重要数据
+        if [ -d "nextcloud/data" ]; then
+            cp -r nextcloud/data "$backup_dir/"
+        fi
+        if [ -d "nextcloud/config" ]; then
+            cp -r nextcloud/config "$backup_dir/"
+        fi
+        if [ -d "nextcloud/ssl" ]; then
+            cp -r nextcloud/ssl "$backup_dir/"
+        fi
+        
+        echo -e "${GREEN}数据已备份到 $backup_dir${NC}"
+    fi
+}
+
+# 清理旧容器
+cleanup_old_containers() {
+    echo -e "${YELLOW}清理旧容器...${NC}"
+    docker-compose down -v 2>/dev/null || true
+    docker rm -f nextcloud nextcloud_db nextcloud_redis 2>/dev/null || true
 }
 
 # 安装依赖
@@ -365,9 +408,26 @@ wait_for_services() {
     return 1
 }
 
+# 检查部署状态
+check_deployment_status() {
+    if docker-compose ps | grep -q "Up"; then
+        echo -e "${GREEN}Nextcloud 服务正在运行${NC}"
+        return 0
+    else
+        echo -e "${RED}Nextcloud 服务未运行${NC}"
+        return 1
+    fi
+}
+
 # 主函数
 main() {
     echo -e "${GREEN}开始安装Nextcloud...${NC}"
+    
+    # 备份现有数据
+    backup_existing_data
+    
+    # 清理旧容器
+    cleanup_old_containers
     
     # 获取域名
     domain=$(get_domain)
@@ -382,7 +442,6 @@ main() {
     optimize_system
     
     echo -e "${GREEN}启动Nextcloud...${NC}"
-    docker-compose down -v  # 清理旧容器
     docker-compose up -d
     
     # 等待服务健康
@@ -392,11 +451,18 @@ main() {
         exit 1
     fi
     
-    echo -e "${GREEN}安装完成！${NC}"
-    echo -e "Nextcloud 访问地址: https://$domain"
-    echo -e "默认管理员账号: admin"
-    echo -e "默认管理员密码: admin"
-    echo -e "${YELLOW}请及时修改默认密码！${NC}"
+    # 检查部署状态
+    if check_deployment_status; then
+        echo -e "${GREEN}安装完成！${NC}"
+        echo -e "Nextcloud 访问地址: https://$domain"
+        echo -e "默认管理员账号: admin"
+        echo -e "默认管理员密码: admin"
+        echo -e "${YELLOW}请及时修改默认密码！${NC}"
+    else
+        echo -e "${RED}部署失败，请检查日志${NC}"
+        docker-compose logs
+        exit 1
+    fi
 }
 
 # 执行主函数
