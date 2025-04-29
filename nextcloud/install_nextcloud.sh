@@ -143,7 +143,7 @@ install_docker_compose() {
 # 创建Nextcloud配置目录
 create_nextcloud_dirs() {
     echo -e "${YELLOW}创建Nextcloud配置目录...${NC}"
-    mkdir -p nextcloud/{data,config,apps,theme,ssl,nginx}
+    mkdir -p nextcloud/{data,config,apps,theme,ssl,nginx,redis}
     chmod -R 777 nextcloud
 }
 
@@ -344,6 +344,9 @@ services:
     image: redis:alpine
     container_name: nextcloud_redis
     restart: always
+    volumes:
+      - ./nextcloud/redis:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     networks:
       - nextcloud_network
     healthcheck:
