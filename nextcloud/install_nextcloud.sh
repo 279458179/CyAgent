@@ -141,29 +141,36 @@ request_ssl_certificate() {
     chmod -R 755 nextcloud/ssl
 }
 
-# 创建Nginx配置
-create_nginx_config() {
+# 创建Nextcloud Nginx配置
+create_nextcloud_nginx_config() {
     local domain=$1
-    echo -e "${YELLOW}创建Nginx配置...${NC}"
-    cat > nextcloud/nginx/nginx.conf << EOF
-user nginx;
-worker_processes auto;
-error_log /var/log/nginx/error.log warn;
-pid /var/run/nginx.pid;
-
-events {
-    worker_connections 1024;
+    echo -e "${YELLOW}创建Nextcloud Nginx配置...${NC}"
+    cat > nextcloud/nginx/nextcloud.conf << EOF
+server {
+    listen 80;
+    server_name $domain;
+    return 301 https://\$server_name\$request_uri;
 }
 
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    log_format main '\$remote_addr - \$remote_user [\$time_local] "\$request" '
-                    '\$status \$body_bytes_sent "\$http_referer" '
-                    '"\$http_user_agent" "\$http_x_forwarded_for"';
-    access_log /var/log/nginx/access.log main;
-    sendfile on;
-    keepalive_timeout 65;
+server {
+    listen 443 ssl http2;
+    server_name $domain;
+
+    ssl_certificate /etc/ssl/private/fullchain.pem;
+    ssl_certificate_key /etc/ssl/private/privkey.pem;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:50m;
+    ssl_session_tickets off;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    root /var/www/html;
+    index index.php;
+
     client_max_body_size 10G;
     fastcgi_buffers 64 4K;
     gzip on;
@@ -173,48 +180,38 @@ http {
     gzip_proxied expired no-cache no-store private no_last_modified no_etag auth;
     gzip_types application/atom+xml application/javascript application/json application/ld+json application/manifest+json application/rss+xml application/vnd.geo+json application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/bmp image/svg+xml image/x-icon text/cache-manifest text/css text/plain text/vcard text/vnd.rim.location.xloc text/vtt text/x-component text/x-cross-domain-policy;
 
-    upstream nextcloud {
-        server nextcloud:80;
+    location / {
+        try_files \$uri \$uri/ /index.php\$is_args\$args;
     }
 
-    server {
-        listen 80;
-        server_name $domain;
-        return 301 https://\$server_name\$request_uri;
+    location ~ \\.php\$ {
+        fastcgi_split_path_info ^(.+?\\.php)(/.*)\$;
+        fastcgi_pass unix:/var/run/php-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_param PATH_INFO \$fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_param modHeadersAvailable true;
+        fastcgi_param front_controller_active true;
+        fastcgi_pass_header Authorization;
+        fastcgi_intercept_errors on;
     }
 
-    server {
-        listen 443 ssl http2;
-        server_name $domain;
+    location ~ \\.(?:css|js|svg|gif|png|jpg|jpeg|woff2?|ttf|otf|eot|ico)\$ {
+        try_files \$uri /index.php\$is_args\$args;
+        add_header Cache-Control "public, max-age=15778463";
+        add_header X-Content-Type-Options nosniff;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header X-Robots-Tag none;
+        add_header X-Download-Options noopen;
+        add_header X-Permitted-Cross-Domain-Policies none;
+        access_log off;
+    }
 
-        ssl_certificate /etc/ssl/private/fullchain.pem;
-        ssl_certificate_key /etc/ssl/private/privkey.pem;
-        ssl_session_timeout 1d;
-        ssl_session_cache shared:SSL:50m;
-        ssl_session_tickets off;
-        ssl_protocols TLSv1.2 TLSv1.3;
-        ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
-        ssl_prefer_server_ciphers off;
-        ssl_stapling on;
-        ssl_stapling_verify on;
-        add_header Strict-Transport-Security "max-age=31536000" always;
-
-        location / {
-            proxy_pass http://nextcloud;
-            proxy_set_header Host \$host;
-            proxy_set_header X-Real-IP \$remote_addr;
-            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto \$scheme;
-            proxy_set_header X-Forwarded-Host \$host;
-            proxy_set_header X-Forwarded-Port \$server_port;
-            proxy_connect_timeout 60s;
-            proxy_send_timeout 60s;
-            proxy_read_timeout 60s;
-            proxy_buffering off;
-            proxy_request_buffering off;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-        }
+    location ~ \\.(?:png|html|ttf|ico|jpg|jpeg|bcmap|mp4|webm)\$ {
+        try_files \$uri /index.php\$is_args\$args;
+        access_log off;
     }
 }
 EOF
@@ -228,35 +225,20 @@ create_docker_compose() {
 version: '3'
 
 services:
-  nginx:
-    image: nginx:alpine
-    container_name: nextcloud_nginx
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud
     restart: always
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nextcloud/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nextcloud/ssl:/etc/ssl/private:ro
-    depends_on:
-      - nextcloud
-    networks:
-      - nextcloud_network
-    healthcheck:
-      test: ["CMD", "nginx", "-t"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  nextcloud:
-    image: nextcloud:latest
-    container_name: nextcloud
-    restart: always
-    volumes:
       - ./nextcloud/data:/var/www/html/data
       - ./nextcloud/config:/var/www/html/config
       - ./nextcloud/apps:/var/www/html/custom_apps
       - ./nextcloud/theme:/var/www/html/themes
+      - ./nextcloud/ssl:/etc/ssl/private
+      - ./nextcloud/nginx/nextcloud.conf:/etc/nginx/conf.d/default.conf
     environment:
       - MYSQL_HOST=db
       - MYSQL_DATABASE=nextcloud
@@ -394,7 +376,7 @@ main() {
     install_docker
     install_docker_compose
     create_nextcloud_dirs
-    create_nginx_config "$domain"
+    create_nextcloud_nginx_config "$domain"
     request_ssl_certificate "$domain"
     create_docker_compose "$domain"
     optimize_system
