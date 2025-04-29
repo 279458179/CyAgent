@@ -22,6 +22,28 @@ else
     exit 1
 fi
 
+# 检查Docker是否已安装
+check_docker() {
+    if command -v docker &> /dev/null; then
+        echo -e "${GREEN}Docker 已安装${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}Docker 未安装${NC}"
+        return 1
+    fi
+}
+
+# 检查Docker Compose是否已安装
+check_docker_compose() {
+    if command -v docker-compose &> /dev/null; then
+        echo -e "${GREEN}Docker Compose 已安装${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}Docker Compose 未安装${NC}"
+        return 1
+    fi
+}
+
 # 安装依赖
 install_dependencies() {
     echo -e "${YELLOW}正在安装依赖...${NC}"
@@ -38,6 +60,10 @@ install_dependencies() {
 
 # 安装Docker
 install_docker() {
+    if check_docker; then
+        return 0
+    fi
+    
     echo -e "${YELLOW}正在安装Docker...${NC}"
     if [[ "$OS" == *"Ubuntu"* ]] || [[ "$OS" == *"Debian"* ]]; then
         curl -fsSL https://get.docker.com | sh
@@ -52,6 +78,10 @@ install_docker() {
 
 # 安装Docker Compose
 install_docker_compose() {
+    if check_docker_compose; then
+        return 0
+    fi
+    
     echo -e "${YELLOW}正在安装Docker Compose...${NC}"
     curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     chmod +x /usr/local/bin/docker-compose
