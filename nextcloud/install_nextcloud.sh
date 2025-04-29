@@ -12,6 +12,16 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# 获取域名
+get_domain() {
+    read -p "请输入您的域名 (例如: cloud.example.com): " domain
+    if [[ -z "$domain" ]]; then
+        echo -e "${RED}域名不能为空${NC}"
+        exit 1
+    fi
+    echo "$domain"
+}
+
 # 检测系统类型
 if [ -f /etc/os-release ]; then
     . /etc/os-release
@@ -49,9 +59,9 @@ install_dependencies() {
     echo -e "${YELLOW}正在安装依赖...${NC}"
     if [[ "$OS" == *"Ubuntu"* ]] || [[ "$OS" == *"Debian"* ]]; then
         apt-get update
-        apt-get install -y curl wget git apt-transport-https ca-certificates gnupg lsb-release
+        apt-get install -y curl wget git apt-transport-https ca-certificates gnupg lsb-release certbot
     elif [[ "$OS" == *"CentOS"* ]]; then
-        yum install -y curl wget git yum-utils device-mapper-persistent-data lvm2
+        yum install -y curl wget git yum-utils device-mapper-persistent-data lvm2 certbot
     else
         echo -e "${RED}不支持的操作系统${NC}"
         exit 1
@@ -90,14 +100,34 @@ install_docker_compose() {
 # 创建Nextcloud配置目录
 create_nextcloud_dirs() {
     echo -e "${YELLOW}创建Nextcloud配置目录...${NC}"
-    mkdir -p nextcloud/{data,config,apps,theme}
+    mkdir -p nextcloud/{data,config,apps,theme,ssl}
     chmod -R 777 nextcloud
+}
+
+# 申请SSL证书
+request_ssl_certificate() {
+    local domain=$1
+    echo -e "${YELLOW}正在申请SSL证书...${NC}"
+    
+    # 停止nginx容器（如果存在）
+    docker-compose down
+    
+    # 申请证书
+    certbot certonly --standalone -d "$domain" --agree-tos --email admin@$domain --non-interactive
+    
+    # 复制证书到Nextcloud目录
+    cp /etc/letsencrypt/live/$domain/fullchain.pem nextcloud/ssl/
+    cp /etc/letsencrypt/live/$domain/privkey.pem nextcloud/ssl/
+    
+    # 设置证书权限
+    chmod -R 755 nextcloud/ssl
 }
 
 # 创建docker-compose.yml
 create_docker_compose() {
+    local domain=$1
     echo -e "${YELLOW}创建docker-compose.yml...${NC}"
-    cat > docker-compose.yml << 'EOF'
+    cat > docker-compose.yml << EOF
 version: '3'
 
 services:
@@ -107,25 +137,49 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nextcloud/data:/var/www/html/data
       - ./nextcloud/config:/var/www/html/config
       - ./nextcloud/apps:/var/www/html/custom_apps
       - ./nextcloud/theme:/var/www/html/themes
+      - ./nextcloud/ssl:/etc/ssl/private
     environment:
       - MYSQL_HOST=db
       - MYSQL_DATABASE=nextcloud
       - MYSQL_USER=nextcloud
       - MYSQL_PASSWORD=nextcloud_password
-      - NEXTCLOUD_TRUSTED_DOMAINS=localhost
+      - NEXTCLOUD_TRUSTED_DOMAINS=$domain
       - PHP_MEMORY_LIMIT=512M
       - PHP_UPLOAD_LIMIT=10G
       - PHP_MAX_EXECUTION_TIME=3600
       - PHP_MAX_INPUT_TIME=3600
+      - PHP_OPCACHE_ENABLE=1
+      - PHP_OPCACHE_MEMORY_CONSUMPTION=128
+      - PHP_OPCACHE_INTERNED_STRINGS_BUFFER=8
+      - PHP_OPCACHE_MAX_ACCELERATED_FILES=4000
+      - PHP_OPCACHE_REVALIDATE_FREQ=60
+      - PHP_OPCACHE_FAST_SHUTDOWN=1
+      - PHP_OPCACHE_ENABLE_CLI=1
+      - PHP_APCU_ENABLE=1
+      - PHP_APCU_MEMORY_CONSUMPTION=128
+      - PHP_APCU_TTL=7200
+      - PHP_APCU_GC_TTL=3600
+      - PHP_APCU_ENABLE_CLI=1
+      - PHP_REDIS_ENABLE=1
+      - PHP_REDIS_HOST=redis
+      - PHP_REDIS_PORT=6379
     depends_on:
       - db
+      - redis
     networks:
       - nextcloud_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/index.php/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   db:
     image: mariadb:10.6
@@ -141,6 +195,12 @@ services:
     command: --innodb-buffer-pool-size=1G --innodb-log-file-size=256M --innodb-flush-method=O_DSYNC --innodb-flush-log-at-trx-commit=2
     networks:
       - nextcloud_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   redis:
     image: redis:alpine
@@ -148,6 +208,12 @@ services:
     restart: always
     networks:
       - nextcloud_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 networks:
   nextcloud_network:
@@ -184,22 +250,54 @@ EOF
     sysctl -p /etc/sysctl.d/99-nextcloud.conf
 }
 
+# 等待服务健康
+wait_for_services() {
+    echo -e "${YELLOW}等待服务启动...${NC}"
+    local max_attempts=30
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        if docker-compose ps | grep -q "healthy"; then
+            echo -e "${GREEN}所有服务已健康启动${NC}"
+            return 0
+        fi
+        echo -e "${YELLOW}等待服务健康检查... (尝试 $attempt/$max_attempts)${NC}"
+        sleep 10
+        attempt=$((attempt + 1))
+    done
+    
+    echo -e "${RED}服务健康检查超时${NC}"
+    return 1
+}
+
 # 主函数
 main() {
     echo -e "${GREEN}开始安装Nextcloud...${NC}"
+    
+    # 获取域名
+    domain=$(get_domain)
     
     install_dependencies
     install_docker
     install_docker_compose
     create_nextcloud_dirs
-    create_docker_compose
+    request_ssl_certificate "$domain"
+    create_docker_compose "$domain"
     optimize_system
     
     echo -e "${GREEN}启动Nextcloud...${NC}"
+    docker-compose down -v  # 清理旧容器
     docker-compose up -d
     
+    # 等待服务健康
+    if ! wait_for_services; then
+        echo -e "${RED}服务启动失败，请检查日志${NC}"
+        docker-compose logs
+        exit 1
+    fi
+    
     echo -e "${GREEN}安装完成！${NC}"
-    echo -e "Nextcloud 访问地址: http://localhost"
+    echo -e "Nextcloud 访问地址: https://$domain"
     echo -e "默认管理员账号: admin"
     echo -e "默认管理员密码: admin"
     echo -e "${YELLOW}请及时修改默认密码！${NC}"
