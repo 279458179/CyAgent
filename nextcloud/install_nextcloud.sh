@@ -104,6 +104,43 @@ create_nextcloud_dirs() {
     chmod -R 777 nextcloud
 }
 
+# 检查SSL证书
+check_ssl_certificate() {
+    local domain=$1
+    if [ -f "nextcloud/ssl/fullchain.pem" ] && [ -f "nextcloud/ssl/privkey.pem" ]; then
+        echo -e "${GREEN}SSL证书已存在${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}SSL证书不存在${NC}"
+        return 1
+    fi
+}
+
+# 申请SSL证书
+request_ssl_certificate() {
+    local domain=$1
+    
+    # 检查证书是否已存在
+    if check_ssl_certificate "$domain"; then
+        return 0
+    fi
+    
+    echo -e "${YELLOW}正在申请SSL证书...${NC}"
+    
+    # 停止nginx容器（如果存在）
+    docker-compose down
+    
+    # 申请证书
+    certbot certonly --standalone -d "$domain" --agree-tos --email admin@$domain --non-interactive
+    
+    # 复制证书到Nextcloud目录
+    cp /etc/letsencrypt/live/$domain/fullchain.pem nextcloud/ssl/
+    cp /etc/letsencrypt/live/$domain/privkey.pem nextcloud/ssl/
+    
+    # 设置证书权限
+    chmod -R 755 nextcloud/ssl
+}
+
 # 创建Nginx配置
 create_nginx_config() {
     local domain=$1
@@ -136,6 +173,10 @@ http {
     gzip_proxied expired no-cache no-store private no_last_modified no_etag auth;
     gzip_types application/atom+xml application/javascript application/json application/ld+json application/manifest+json application/rss+xml application/vnd.geo+json application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/bmp image/svg+xml image/x-icon text/cache-manifest text/css text/plain text/vcard text/vnd.rim.location.xloc text/vtt text/x-component text/x-cross-domain-policy;
 
+    upstream nextcloud {
+        server nextcloud:80;
+    }
+
     server {
         listen 80;
         server_name $domain;
@@ -159,7 +200,7 @@ http {
         add_header Strict-Transport-Security "max-age=31536000" always;
 
         location / {
-            proxy_pass http://nextcloud:80;
+            proxy_pass http://nextcloud;
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -169,29 +210,14 @@ http {
             proxy_connect_timeout 60s;
             proxy_send_timeout 60s;
             proxy_read_timeout 60s;
+            proxy_buffering off;
+            proxy_request_buffering off;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
         }
     }
 }
 EOF
-}
-
-# 申请SSL证书
-request_ssl_certificate() {
-    local domain=$1
-    echo -e "${YELLOW}正在申请SSL证书...${NC}"
-    
-    # 停止nginx容器（如果存在）
-    docker-compose down
-    
-    # 申请证书
-    certbot certonly --standalone -d "$domain" --agree-tos --email admin@$domain --non-interactive
-    
-    # 复制证书到Nextcloud目录
-    cp /etc/letsencrypt/live/$domain/fullchain.pem nextcloud/ssl/
-    cp /etc/letsencrypt/live/$domain/privkey.pem nextcloud/ssl/
-    
-    # 设置证书权限
-    chmod -R 755 nextcloud/ssl
 }
 
 # 创建docker-compose.yml
