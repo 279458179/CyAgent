@@ -264,7 +264,7 @@ EOF
 create_docker_compose() {
     local domain=$1
     echo -e "${YELLOW}创建docker-compose.yml...${NC}"
-    cat > docker-compose.yml << EOF
+    cat > docker-compose.yml << 'EOF'
 version: '3'
 
 services:
@@ -287,7 +287,7 @@ services:
       - MYSQL_DATABASE=nextcloud
       - MYSQL_USER=nextcloud
       - MYSQL_PASSWORD=nextcloud_password
-      - NEXTCLOUD_TRUSTED_DOMAINS=$domain
+      - NEXTCLOUD_TRUSTED_DOMAINS=${domain}
       - PHP_MEMORY_LIMIT=512M
       - PHP_UPLOAD_LIMIT=10G
       - PHP_MAX_EXECUTION_TIME=3600
@@ -360,6 +360,9 @@ networks:
   nextcloud_network:
     driver: bridge
 EOF
+
+    # 替换域名变量
+    sed -i "s/\${domain}/$domain/g" docker-compose.yml
 }
 
 # 优化系统设置
@@ -398,9 +401,13 @@ wait_for_services() {
     local attempt=1
     
     while [ $attempt -le $max_attempts ]; do
-        if docker-compose ps | grep -q "healthy"; then
-            echo -e "${GREEN}所有服务已健康启动${NC}"
-            return 0
+        # 检查容器是否正在运行
+        if docker ps | grep -q "nextcloud"; then
+            # 检查服务是否健康
+            if docker-compose ps | grep -q "Up"; then
+                echo -e "${GREEN}所有服务已健康启动${NC}"
+                return 0
+            fi
         fi
         echo -e "${YELLOW}等待服务健康检查... (尝试 $attempt/$max_attempts)${NC}"
         sleep 10
@@ -408,16 +415,18 @@ wait_for_services() {
     done
     
     echo -e "${RED}服务健康检查超时${NC}"
+    docker-compose logs
     return 1
 }
 
 # 检查部署状态
 check_deployment_status() {
-    if docker-compose ps | grep -q "Up"; then
+    if docker ps | grep -q "nextcloud"; then
         echo -e "${GREEN}Nextcloud 服务正在运行${NC}"
         return 0
     else
         echo -e "${RED}Nextcloud 服务未运行${NC}"
+        docker-compose logs
         return 1
     fi
 }
